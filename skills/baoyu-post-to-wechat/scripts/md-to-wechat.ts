@@ -3,6 +3,7 @@ import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import https from 'node:https';
 import http from 'node:http';
 import { spawnSync } from 'node:child_process';
@@ -100,10 +101,7 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, string
     const colonIdx = line.indexOf(':');
     if (colonIdx > 0) {
       const key = line.slice(0, colonIdx).trim();
-      let value = line.slice(colonIdx + 1).trim();
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
-      }
+      const value = line.slice(colonIdx + 1).trim();
       frontmatter[key] = value;
     }
   }
@@ -111,42 +109,21 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, string
   return { frontmatter, body: match[2]! };
 }
 
-async function parseMarkdownForWechat(
-  markdownPath: string,
-  options?: { title?: string; theme?: string; tempDir?: string },
-): Promise<ParsedResult> {
-  const content = fs.readFileSync(markdownPath, 'utf-8');
+export async function convertMarkdown(markdownPath: string, theme = 'default'): Promise<ParsedResult> {
   const baseDir = path.dirname(markdownPath);
-  const tempDir = options?.tempDir ?? path.join(os.tmpdir(), 'wechat-article-images');
-  const theme = options?.theme ?? 'default';
-
-  await mkdir(tempDir, { recursive: true });
+  const content = fs.readFileSync(markdownPath, 'utf-8');
 
   const { frontmatter, body } = parseFrontmatter(content);
 
-  let title = options?.title ?? frontmatter.title ?? '';
-  if (!title) {
-    const h1Match = body.match(/^#\s+(.+)$/m);
-    if (h1Match) title = h1Match[1]!;
-  }
-
-  const author = frontmatter.author ?? '';
-  let summary = frontmatter.summary ?? frontmatter.description ?? '';
+  let title = frontmatter.title || path.basename(markdownPath, path.extname(markdownPath));
+  const author = frontmatter.author || '';
+  let summary = frontmatter.description || frontmatter.summary || '';
 
   if (!summary) {
-    const lines = body.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (trimmed.startsWith('#')) continue;
-      if (trimmed.startsWith('![')) continue;
-      if (trimmed.startsWith('>')) continue;
-      if (trimmed.startsWith('-') || trimmed.startsWith('*')) continue;
-      if (/^\d+\./.test(trimmed)) continue;
-
-      const cleanText = trimmed
-        .replace(/\*\*(.+?)\*\*/g, '$1')
-        .replace(/\*(.+?)\*/g, '$1')
+    const paragraphs = body.split('\n\n').filter(p => p.trim() && !p.startsWith('#'));
+    for (const para of paragraphs) {
+      const cleanText = para
+        .replace(/[#*`_\[\]]/g, '')
         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
         .replace(/`([^`]+)`/g, '$1');
 
@@ -168,13 +145,19 @@ async function parseMarkdownForWechat(
 
   const modifiedMarkdown = `---\n${Object.entries(frontmatter).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n${modifiedBody}`;
 
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wechat-article-images-'));
   const tempMdPath = path.join(tempDir, 'temp-article.md');
   await writeFile(tempMdPath, modifiedMarkdown, 'utf-8');
 
-  const scriptDir = path.dirname(new URL(import.meta.url).pathname);
-  const renderScript = path.join(scriptDir, 'md', 'render.ts');
+  // 使用 fileURLToPath 来正确处理 Windows 路径
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const renderScript = path.join(__dirname, 'md', 'render.ts');
 
   console.error(`[md-to-wechat] Rendering markdown with theme: ${theme}`);
+  console.error(`[md-to-wechat] Script dir: ${__dirname}`);
+  console.error(`[md-to-wechat] Render script: ${renderScript}`);
+
   const result = spawnSync('npx', ['-y', 'bun', renderScript, tempMdPath, '--theme', theme], {
     stdio: ['inherit', 'pipe', 'pipe'],
     cwd: baseDir,
@@ -213,7 +196,7 @@ function printUsage(): never {
   console.log(`Convert Markdown to WeChat-ready HTML with image placeholders
 
 Usage:
-  npx -y bun md-to-wechat.ts <markdown_file> [options]
+  npx -y bun md-to-wechat-fixed.ts <markdown_file> [options]
 
 Options:
   --title <title>     Override title
@@ -227,15 +210,15 @@ Output JSON format:
   "contentImages": [
     {
       "placeholder": "[[IMAGE_PLACEHOLDER_1]]",
-      "localPath": "/tmp/wechat-article-images/img.png",
+      "localPath": "/tmp/wechat-image/img.png",
       "originalPath": "imgs/image.png"
     }
   ]
 }
 
 Example:
-  npx -y bun md-to-wechat.ts article.md
-  npx -y bun md-to-wechat.ts article.md --theme grace
+  npx -y bun md-to-wechat-fixed.ts article.md
+  npx -y bun md-to-wechat-fixed.ts article.md --theme grace
 `);
   process.exit(0);
 }
@@ -247,22 +230,21 @@ async function main(): Promise<void> {
   }
 
   let markdownPath: string | undefined;
-  let title: string | undefined;
-  let theme: string | undefined;
+  let theme = 'default';
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === '--title' && args[i + 1]) {
-      title = args[++i];
+      args[i + 1]; // skip value
     } else if (arg === '--theme' && args[i + 1]) {
-      theme = args[++i];
-    } else if (!arg.startsWith('-')) {
+      theme = args[++i]!;
+    } else if (!arg.startsWith('--')) {
       markdownPath = arg;
     }
   }
 
   if (!markdownPath) {
-    console.error('Error: Markdown file path required');
+    console.error('Error: Markdown file path is required');
     process.exit(1);
   }
 
@@ -271,7 +253,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const result = await parseMarkdownForWechat(markdownPath, { title, theme });
+  const result = await convertMarkdown(markdownPath, theme);
   console.log(JSON.stringify(result, null, 2));
 }
 

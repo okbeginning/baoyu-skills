@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { launchChrome, getPageSession, waitForNewTab, clickElement, typeText, evaluate, sleep, type ChromeSession, type CdpConnection } from './cdp.ts';
 
 const WECHAT_URL = 'https://mp.weixin.qq.com/';
@@ -65,8 +66,9 @@ async function clickMenuByText(session: ChromeSession, text: string): Promise<vo
 }
 
 async function copyImageToClipboard(imagePath: string): Promise<void> {
-  const scriptDir = path.dirname(new URL(import.meta.url).pathname);
-  const copyScript = path.join(scriptDir, './copy-to-clipboard.ts');
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const copyScript = path.join(__dirname, './copy-to-clipboard.ts');
   const result = spawnSync('npx', ['-y', 'bun', copyScript, 'image', imagePath], { stdio: 'inherit' });
   if (result.status !== 0) throw new Error(`Failed to copy image: ${imagePath}`);
 }
@@ -108,30 +110,56 @@ async function copyHtmlFromBrowser(cdp: CdpConnection, htmlFilePath: string): Pr
   }, { sessionId });
   await sleep(300);
 
-  console.log('[wechat] Copying with system Cmd+C...');
-  if (process.platform === 'darwin') {
-    spawnSync('osascript', ['-e', 'tell application "System Events" to keystroke "c" using command down']);
-  } else {
-    spawnSync('xdotool', ['key', 'ctrl+c']);
-  }
+  console.log('[wechat] Copying with CDP keyboard event...');
+  // 使用 CDP 发送 Ctrl+C (更可靠，不依赖系统工具)
+  const modifiers = process.platform === 'darwin' ? 4 : 2; // 4=Cmd, 2=Ctrl
+  await cdp.send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'c',
+    code: 'KeyC',
+    modifiers,
+    windowsVirtualKeyCode: 67
+  }, { sessionId });
+  await sleep(50);
+  await cdp.send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'c',
+    code: 'KeyC',
+    modifiers,
+    windowsVirtualKeyCode: 67
+  }, { sessionId });
   await sleep(1000);
 
   console.log('[wechat] Closing HTML tab...');
   await cdp.send('Target.closeTarget', { targetId });
 }
 
-async function pasteFromClipboardInEditor(): Promise<void> {
-  if (process.platform === 'darwin') {
-    spawnSync('osascript', ['-e', 'tell application "System Events" to keystroke "v" using command down']);
-  } else {
-    spawnSync('xdotool', ['key', 'ctrl+v']);
-  }
+async function pasteFromClipboardInEditor(session: ChromeSession): Promise<void> {
+  console.log('[wechat] Pasting with CDP keyboard event...');
+  // 使用 CDP 发送 Ctrl+V (更可靠，不依赖系统工具)
+  const modifiers = process.platform === 'darwin' ? 4 : 2; // 4=Cmd, 2=Ctrl
+  await session.cdp.send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'v',
+    code: 'KeyV',
+    modifiers,
+    windowsVirtualKeyCode: 86
+  }, { sessionId: session.sessionId });
+  await sleep(50);
+  await session.cdp.send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'v',
+    code: 'KeyV',
+    modifiers,
+    windowsVirtualKeyCode: 86
+  }, { sessionId: session.sessionId });
   await sleep(1000);
 }
 
 async function parseMarkdownWithPlaceholders(markdownPath: string, theme?: string): Promise<{ title: string; author: string; summary: string; htmlPath: string; contentImages: ImageInfo[] }> {
-  const scriptDir = path.dirname(new URL(import.meta.url).pathname);
-  const mdToWechatScript = path.join(scriptDir, 'md-to-wechat.ts');
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const mdToWechatScript = path.join(__dirname, 'md-to-wechat-fixed.ts');
   const args = ['-y', 'bun', mdToWechatScript, markdownPath];
   if (theme) args.push('--theme', theme);
 
@@ -295,6 +323,11 @@ export async function postArticle(options: ArticleOptions): Promise<void> {
 
     console.log('[wechat] Clicking on editor...');
     await clickElement(session, '.ProseMirror');
+    await sleep(1000);
+
+    // 再次点击确保焦点
+    console.log('[wechat] Ensuring editor focus...');
+    await clickElement(session, '.ProseMirror');
     await sleep(500);
 
     if (effectiveHtmlFile && fs.existsSync(effectiveHtmlFile)) {
@@ -302,7 +335,7 @@ export async function postArticle(options: ArticleOptions): Promise<void> {
       await copyHtmlFromBrowser(cdp, effectiveHtmlFile);
       await sleep(500);
       console.log('[wechat] Pasting into editor...');
-      await pasteFromClipboardInEditor();
+      await pasteFromClipboardInEditor(session);
       await sleep(3000);
 
       if (contentImages.length > 0) {
@@ -328,7 +361,7 @@ export async function postArticle(options: ArticleOptions): Promise<void> {
           await sleep(200);
 
           console.log('[wechat] Pasting image...');
-          await pasteFromClipboardInEditor();
+          await pasteFromClipboardInEditor(session);
           await sleep(3000);
         }
         console.log('[wechat] All images inserted.');
@@ -376,7 +409,7 @@ function printUsage(): never {
   console.log(`Post article to WeChat Official Account
 
 Usage:
-  npx -y bun wechat-article.ts [options]
+  npx -y bun wechat-article-fixed.ts [options]
 
 Options:
   --title <text>     Article title (auto-extracted from markdown)
@@ -391,10 +424,10 @@ Options:
   --profile <dir>    Chrome profile directory
 
 Examples:
-  npx -y bun wechat-article.ts --markdown article.md
-  npx -y bun wechat-article.ts --markdown article.md --theme grace --submit
-  npx -y bun wechat-article.ts --title "标题" --content "内容" --image img.png
-  npx -y bun wechat-article.ts --title "标题" --html article.html --submit
+  npx -y bun wechat-article-fixed.ts --markdown article.md
+  npx -y bun wechat-article-fixed.ts --markdown article.md --theme grace --submit
+  npx -y bun wechat-article-fixed.ts --title "标题" --content "内容" --image img.png
+  npx -y bun wechat-article-fixed.ts --title "标题" --html article.html --submit
 
 Markdown mode:
   Images in markdown are converted to placeholders. After pasting HTML,
