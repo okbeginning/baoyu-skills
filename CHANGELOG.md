@@ -2,6 +2,14 @@
 
 English | [中文](./CHANGELOG.zh.md)
 
+## 1.26.1 - 2026-01-29
+
+### Features
+- `baoyu-article-illustrator`, `baoyu-comic`, `baoyu-cover-image`, `baoyu-infographic`, `baoyu-slide-deck`, `baoyu-xhs-images`: add backup rules for existing files—automatically renames source, prompt, and image files with timestamp suffix before overwriting.
+
+### Fixes
+- `baoyu-xhs-images`: remove `notebook` style (10 styles remaining).
+
 ## 1.26.0 - 2026-01-29
 
 ### Features

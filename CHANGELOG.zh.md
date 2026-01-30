@@ -2,6 +2,14 @@
 
 [English](./CHANGELOG.md) | 中文
 
+## 1.26.1 - 2026-01-29
+
+### 新功能
+- `baoyu-article-illustrator`、`baoyu-comic`、`baoyu-cover-image`、`baoyu-infographic`、`baoyu-slide-deck`、`baoyu-xhs-images`：新增文件备份规则，覆盖前自动将现有源文件、提示词和图片重命名为带时间戳后缀的备份文件。
+
+### 修复
+- `baoyu-xhs-images`：移除 `notebook` 风格（保留 10 种风格）。
+
 ## 1.26.0 - 2026-01-29
 
 ### 新功能
