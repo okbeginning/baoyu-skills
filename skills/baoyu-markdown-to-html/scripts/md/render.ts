@@ -7,6 +7,10 @@ import frontMatter from "front-matter";
 import hljs from "highlight.js/lib/core";
 import { marked, type RendererObject, type Tokens } from "marked";
 import readingTime, { type ReadTimeResults } from "reading-time";
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkCjkFriendly from "remark-cjk-friendly";
+import remarkStringify from "remark-stringify";
 
 import {
   markedAlert,
@@ -552,12 +556,47 @@ interface CliOptions {
   keepTitle: boolean;
 }
 
+function preprocessCjkEmphasis(markdown: string): string {
+  const processor = unified()
+    .use(remarkParse)
+    .use(remarkCjkFriendly);
+  const tree = processor.parse(markdown);
+  const visit = (node: any, parent?: any, index?: number) => {
+    if (node.children) {
+      for (let i = 0; i < node.children.length; i++) {
+        visit(node.children[i], node, i);
+      }
+    }
+    if (node.type === "strong" && parent && typeof index === "number") {
+      const text = extractText(node);
+      parent.children[index] = { type: "html", value: `<strong>${text}</strong>` };
+    }
+    if (node.type === "emphasis" && parent && typeof index === "number") {
+      const text = extractText(node);
+      parent.children[index] = { type: "html", value: `<em>${text}</em>` };
+    }
+  };
+  const extractText = (node: any): string => {
+    if (node.type === "text") return node.value;
+    if (node.children) return node.children.map(extractText).join("");
+    return "";
+  };
+  visit(tree);
+  const stringify = unified().use(remarkStringify);
+  let result = stringify.stringify(tree);
+  result = result.replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) =>
+    String.fromCodePoint(parseInt(hex, 16))
+  );
+  return result;
+}
+
 function renderMarkdown(raw: string, renderer: RendererAPI): {
   html: string;
   readingTime: ReadTimeResults;
 } {
+  const preprocessed = preprocessCjkEmphasis(raw);
   const { markdownContent, readingTime: readingTimeResult } =
-    renderer.parseFrontMatterAndContent(raw);
+    renderer.parseFrontMatterAndContent(preprocessed);
 
   const html = marked.parse(markdownContent) as string;
 
