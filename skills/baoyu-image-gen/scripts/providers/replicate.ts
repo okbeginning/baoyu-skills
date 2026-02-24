@@ -2,7 +2,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import type { CliArgs } from "../types";
 
-const DEFAULT_MODEL = "google/nano-banana";
+const DEFAULT_MODEL = "google/nano-banana-pro";
 const SYNC_WAIT_SECONDS = 60;
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_MS = 300_000;
