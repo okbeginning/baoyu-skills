@@ -2,6 +2,15 @@
 
 English | [中文](./CHANGELOG.zh.md)
 
+## 1.35.0 - 2026-02-24
+
+### Features
+- `baoyu-image-gen`: add Replicate provider support with configurable models (by @justnode)
+- `baoyu-infographic`: add `dense-modules` layout and 3 new styles (`morandi-journal`, `pop-laboratory`, `retro-pop-grid`) for high-density infographics. Add keyword shortcuts for auto-selection. Prompt credit: [AJ](https://waytoagi.feishu.cn/wiki/YG0zwalijihRREkgmPzcWRInnUg)
+
+### Documentation
+- `baoyu-image-gen`: add Replicate model configuration documentation
+
 ## 1.34.2 - 2026-02-25
 
 ### Documentation

@@ -2,6 +2,15 @@
 
 [English](./CHANGELOG.md) | 中文
 
+## 1.35.0 - 2026-02-24
+
+### 新功能
+- `baoyu-image-gen`：新增 Replicate 图片生成服务，支持自定义模型配置 (by @justnode)
+- `baoyu-infographic`：新增 `dense-modules` 高密度模块布局及 3 种新风格（`morandi-journal`、`pop-laboratory`、`retro-pop-grid`），支持关键词快捷选择。高密度信息大图提示词来自 [AJ](https://waytoagi.feishu.cn/wiki/YG0zwalijihRREkgmPzcWRInnUg)
+
+### 文档
+- `baoyu-image-gen`：补充 Replicate 模型配置说明文档
+
 ## 1.34.2 - 2026-02-25
 
 ### 文档
