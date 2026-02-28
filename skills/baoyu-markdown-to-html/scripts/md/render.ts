@@ -1,6 +1,7 @@
 #!/usr/bin/env npx tsx
 
 import fs from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import frontMatter from "front-matter";
@@ -40,10 +41,47 @@ const EXTERNAL_THEME_DIR =
   || path.resolve(path.dirname(EXTERNAL_THEME_CONFIG_PATH), "theme-css");
 const FALLBACK_THEMES: ThemeName[] = ["default", "grace", "simple"];
 
-const DEFAULT_STYLE = {
+const FONT_FAMILY_MAP: Record<string, string> = {
+  sans: `-apple-system-font,BlinkMacSystemFont, Helvetica Neue, PingFang SC, Hiragino Sans GB , Microsoft YaHei UI , Microsoft YaHei ,Arial,sans-serif`,
+  serif: `Optima-Regular, Optima, PingFangSC-light, PingFangTC-light, 'PingFang SC', Cambria, Cochin, Georgia, Times, 'Times New Roman', serif`,
+  mono: `Menlo, Monaco, 'Courier New', monospace`,
+};
+
+const FONT_SIZE_OPTIONS = ["14px", "15px", "16px", "17px", "18px"];
+
+const CODE_BLOCK_THEMES = [
+  "1c-light", "a11y-dark", "a11y-light", "agate", "an-old-hope",
+  "androidstudio", "arduino-light", "arta", "ascetic",
+  "atom-one-dark-reasonable", "atom-one-dark", "atom-one-light",
+  "brown-paper", "codepen-embed", "color-brewer", "dark", "default",
+  "devibeans", "docco", "far", "felipec", "foundation",
+  "github-dark-dimmed", "github-dark", "github", "gml", "googlecode",
+  "gradient-dark", "gradient-light", "grayscale", "hybrid", "idea",
+  "intellij-light", "ir-black", "isbl-editor-dark", "isbl-editor-light",
+  "kimbie-dark", "kimbie-light", "lightfair", "lioshi", "magula",
+  "mono-blue", "monokai-sublime", "monokai", "night-owl", "nnfx-dark",
+  "nnfx-light", "nord", "obsidian", "panda-syntax-dark",
+  "panda-syntax-light", "paraiso-dark", "paraiso-light", "pojoaque",
+  "purebasic", "qtcreator-dark", "qtcreator-light", "rainbow", "routeros",
+  "school-book", "shades-of-purple", "srcery", "stackoverflow-dark",
+  "stackoverflow-light", "sunburst", "tokyo-night-dark", "tokyo-night-light",
+  "tomorrow-night-blue", "tomorrow-night-bright", "vs", "vs2015", "xcode",
+  "xt256",
+];
+
+const HLJS_CDN_BASE = "https://cdn-doocs.oss-cn-shenzhen.aliyuncs.com/npm/highlightjs/11.11.1";
+
+interface StyleConfig {
+  primaryColor: string;
+  fontFamily: string;
+  fontSize: string;
+  foreground: string;
+  blockquoteBackground: string;
+}
+
+const DEFAULT_STYLE: StyleConfig = {
   primaryColor: "#0F4C81",
-  fontFamily:
-    "-apple-system-font,BlinkMacSystemFont, Helvetica Neue, PingFang SC, Hiragino Sans GB , Microsoft YaHei UI , Microsoft YaHei ,Arial,sans-serif",
+  fontFamily: FONT_FAMILY_MAP.sans!,
   fontSize: "16px",
   foreground: "0 0% 3.9%",
   blockquoteBackground: "#f7f7f7",
@@ -490,44 +528,131 @@ function printUsage(): void {
   console.error(
     [
       "Usage:",
-      "  npx tsx src/md/render.ts <markdown_file> [--theme <name>]",
+      "  npx tsx src/md/render.ts <markdown_file> [options]",
       "",
       "Options:",
-      `  --theme   Theme name (${THEME_NAMES.join(", ")})`,
+      `  --theme <name>        Theme (${THEME_NAMES.join(", ")})`,
+      `  --color <hex>         Primary color (default: ${DEFAULT_STYLE.primaryColor})`,
+      `  --font-family <name>  Font: sans, serif, mono, or CSS value`,
+      `  --font-size <N>       Font size: ${FONT_SIZE_OPTIONS.join(", ")} (default: 16px)`,
+      `  --code-theme <name>   Code highlight theme (default: github)`,
+      `  --mac-code-block      Show Mac-style code block header`,
+      `  --line-number         Show line numbers in code blocks`,
+      `  --cite                Enable footnote citations`,
+      `  --count               Show reading time / word count`,
+      `  --legend <value>      Image caption: title-alt, alt-title, title, alt, none`,
+      `  --keep-title          Keep the first heading in output`,
     ].join("\n")
   );
 }
 
+function parseArgValue(argv: string[], i: number, flag: string): string | null {
+  const arg = argv[i]!;
+  if (arg.includes("=")) {
+    return arg.slice(flag.length + 1);
+  }
+  const next = argv[i + 1];
+  return next ?? null;
+}
+
+function resolveFontFamily(value: string): string {
+  return FONT_FAMILY_MAP[value] ?? value;
+}
+
 function parseArgs(argv: string[]): CliOptions | null {
+  const ext = loadExtendConfig();
+
   let inputPath = "";
-  let theme: ThemeName = "default";
-  let keepTitle = false;
+  let theme: ThemeName = ext.default_theme ?? "default";
+  let keepTitle = ext.keep_title ?? false;
+  let primaryColor = ext.default_color ?? DEFAULT_STYLE.primaryColor;
+  let fontFamily = ext.default_font_family ? resolveFontFamily(ext.default_font_family) : DEFAULT_STYLE.fontFamily;
+  let fontSize = ext.default_font_size ?? DEFAULT_STYLE.fontSize;
+  let codeTheme = ext.default_code_theme ?? "github";
+  let isMacCodeBlock = ext.mac_code_block ?? true;
+  let isShowLineNumber = ext.show_line_number ?? false;
+  let citeStatus = ext.cite ?? false;
+  let countStatus = ext.count ?? false;
+  let legend = ext.legend ?? "alt";
 
   for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
+    const arg = argv[i]!;
+
     if (!arg.startsWith("--") && !inputPath) {
       inputPath = arg;
       continue;
     }
 
-    if (arg === "--theme") {
-      theme = (argv[i + 1] || "") as ThemeName;
-      i += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--theme=")) {
-      theme = arg.slice("--theme=".length) as ThemeName;
-      continue;
-    }
-
-    if (arg === "--keep-title") {
-      keepTitle = true;
-      continue;
-    }
-
     if (arg === "--help" || arg === "-h") {
       return null;
+    }
+
+    if (arg === "--keep-title") { keepTitle = true; continue; }
+    if (arg === "--mac-code-block") { isMacCodeBlock = true; continue; }
+    if (arg === "--no-mac-code-block") { isMacCodeBlock = false; continue; }
+    if (arg === "--line-number") { isShowLineNumber = true; continue; }
+    if (arg === "--cite") { citeStatus = true; continue; }
+    if (arg === "--count") { countStatus = true; continue; }
+
+    if (arg === "--theme" || arg.startsWith("--theme=")) {
+      const val = parseArgValue(argv, i, "--theme");
+      if (!val) { console.error("Missing value for --theme"); return null; }
+      theme = val as ThemeName;
+      if (!arg.includes("=")) i += 1;
+      continue;
+    }
+
+    if (arg === "--color" || arg.startsWith("--color=")) {
+      const val = parseArgValue(argv, i, "--color");
+      if (!val) { console.error("Missing value for --color"); return null; }
+      primaryColor = val;
+      if (!arg.includes("=")) i += 1;
+      continue;
+    }
+
+    if (arg === "--font-family" || arg.startsWith("--font-family=")) {
+      const val = parseArgValue(argv, i, "--font-family");
+      if (!val) { console.error("Missing value for --font-family"); return null; }
+      fontFamily = resolveFontFamily(val);
+      if (!arg.includes("=")) i += 1;
+      continue;
+    }
+
+    if (arg === "--font-size" || arg.startsWith("--font-size=")) {
+      const val = parseArgValue(argv, i, "--font-size");
+      if (!val) { console.error("Missing value for --font-size"); return null; }
+      fontSize = val.endsWith("px") ? val : `${val}px`;
+      if (!FONT_SIZE_OPTIONS.includes(fontSize)) {
+        console.error(`Invalid font size: ${fontSize}. Valid: ${FONT_SIZE_OPTIONS.join(", ")}`);
+        return null;
+      }
+      if (!arg.includes("=")) i += 1;
+      continue;
+    }
+
+    if (arg === "--code-theme" || arg.startsWith("--code-theme=")) {
+      const val = parseArgValue(argv, i, "--code-theme");
+      if (!val) { console.error("Missing value for --code-theme"); return null; }
+      codeTheme = val;
+      if (!CODE_BLOCK_THEMES.includes(codeTheme)) {
+        console.error(`Unknown code theme: ${codeTheme}`);
+        return null;
+      }
+      if (!arg.includes("=")) i += 1;
+      continue;
+    }
+
+    if (arg === "--legend" || arg.startsWith("--legend=")) {
+      const val = parseArgValue(argv, i, "--legend");
+      if (!val) { console.error("Missing value for --legend"); return null; }
+      const valid = ["title-alt", "alt-title", "title", "alt", "none"];
+      if (!valid.includes(val)) {
+        console.error(`Invalid legend: ${val}. Valid: ${valid.join(", ")}`);
+        return null;
+      }
+      legend = val;
+      if (!arg.includes("=")) i += 1;
+      continue;
     }
 
     console.error(`Unknown argument: ${arg}`);
@@ -544,9 +669,8 @@ function parseArgs(argv: string[]): CliOptions | null {
   }
 
   return {
-    inputPath,
-    theme,
-    keepTitle,
+    inputPath, theme, keepTitle, primaryColor, fontFamily, fontSize,
+    codeTheme, isMacCodeBlock, isShowLineNumber, citeStatus, countStatus, legend,
   };
 }
 
@@ -554,6 +678,78 @@ interface CliOptions {
   inputPath: string;
   theme: ThemeName;
   keepTitle: boolean;
+  primaryColor: string;
+  fontFamily: string;
+  fontSize: string;
+  codeTheme: string;
+  isMacCodeBlock: boolean;
+  isShowLineNumber: boolean;
+  citeStatus: boolean;
+  countStatus: boolean;
+  legend: string;
+}
+
+interface ExtendConfig {
+  default_theme: string | null;
+  default_color: string | null;
+  default_font_family: string | null;
+  default_font_size: string | null;
+  default_code_theme: string | null;
+  mac_code_block: boolean | null;
+  show_line_number: boolean | null;
+  cite: boolean | null;
+  count: boolean | null;
+  legend: string | null;
+  keep_title: boolean | null;
+}
+
+function extractYamlFrontMatter(content: string): string | null {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*$/m);
+  return match ? match[1]! : null;
+}
+
+function parseExtendYaml(yaml: string): Partial<ExtendConfig> {
+  const config: Partial<ExtendConfig> = {};
+  for (const line of yaml.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const colonIdx = trimmed.indexOf(":");
+    if (colonIdx < 0) continue;
+    const key = trimmed.slice(0, colonIdx).trim();
+    let value = trimmed.slice(colonIdx + 1).trim().replace(/^['"]|['"]$/g, "");
+    if (value === "null" || value === "") continue;
+
+    if (key === "default_theme") config.default_theme = value;
+    else if (key === "default_color") config.default_color = value;
+    else if (key === "default_font_family") config.default_font_family = value;
+    else if (key === "default_font_size") config.default_font_size = value.endsWith("px") ? value : `${value}px`;
+    else if (key === "default_code_theme") config.default_code_theme = value;
+    else if (key === "mac_code_block") config.mac_code_block = value === "true";
+    else if (key === "show_line_number") config.show_line_number = value === "true";
+    else if (key === "cite") config.cite = value === "true";
+    else if (key === "count") config.count = value === "true";
+    else if (key === "legend") config.legend = value;
+    else if (key === "keep_title") config.keep_title = value === "true";
+  }
+  return config;
+}
+
+function loadExtendConfig(): Partial<ExtendConfig> {
+  const paths = [
+    path.join(process.cwd(), ".baoyu-skills", "baoyu-markdown-to-html", "EXTEND.md"),
+    path.join(homedir(), ".baoyu-skills", "baoyu-markdown-to-html", "EXTEND.md"),
+  ];
+  for (const p of paths) {
+    try {
+      const content = fs.readFileSync(p, "utf-8");
+      const yaml = extractYamlFrontMatter(content);
+      if (!yaml) continue;
+      return parseExtendYaml(yaml);
+    } catch {
+      continue;
+    }
+  }
+  return {};
 }
 
 function preprocessCjkEmphasis(markdown: string): string {
@@ -679,14 +875,14 @@ function loadThemeCss(theme: ThemeName): {
   };
 }
 
-function buildCss(baseCss: string, themeCss: string): string {
+function buildCss(baseCss: string, themeCss: string, style: StyleConfig = DEFAULT_STYLE): string {
   const variables = `
 :root {
-  --md-primary-color: ${DEFAULT_STYLE.primaryColor};
-  --md-font-family: ${DEFAULT_STYLE.fontFamily};
-  --md-font-size: ${DEFAULT_STYLE.fontSize};
-  --foreground: ${DEFAULT_STYLE.foreground};
-  --blockquote-background: ${DEFAULT_STYLE.blockquoteBackground};
+  --md-primary-color: ${style.primaryColor};
+  --md-font-family: ${style.fontFamily};
+  --md-font-size: ${style.fontSize};
+  --foreground: ${style.foreground};
+  --blockquote-background: ${style.blockquoteBackground};
 }
 
 body {
@@ -708,13 +904,28 @@ function normalizeThemeCss(css: string): string {
   return stripOutputScope(css);
 }
 
+async function fetchCodeThemeCss(themeName: string): Promise<string> {
+  const url = `${HLJS_CDN_BASE}/styles/${themeName}.min.css`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error(`Failed to fetch code theme CSS: ${res.status} ${url}`);
+      return "";
+    }
+    return await res.text();
+  } catch (error) {
+    console.error(`Failed to fetch code theme CSS from ${url}:`, error);
+    return "";
+  }
+}
+
 interface HtmlDocumentMeta {
   title: string;
   author?: string;
   description?: string;
 }
 
-function buildHtmlDocument(meta: HtmlDocumentMeta, css: string, html: string): string {
+function buildHtmlDocument(meta: HtmlDocumentMeta, css: string, html: string, codeThemeCss?: string): string {
   const lines = [
     "<!doctype html>",
     "<html>",
@@ -729,8 +940,11 @@ function buildHtmlDocument(meta: HtmlDocumentMeta, css: string, html: string): s
   if (meta.description) {
     lines.push(`  <meta name="description" content="${meta.description}" />`);
   }
+  lines.push(`  <style>${css}</style>`);
+  if (codeThemeCss) {
+    lines.push(`  <style>${codeThemeCss}</style>`);
+  }
   lines.push(
-    `  <style>${css}</style>`,
     "</head>",
     "<body>",
     '  <div id="output">',
@@ -758,12 +972,12 @@ async function inlineCss(html: string): Promise<string> {
   }
 }
 
-function normalizeCssText(cssText: string): string {
+function normalizeCssText(cssText: string, style: StyleConfig = DEFAULT_STYLE): string {
   return cssText
-    .replace(/var\(--md-primary-color\)/g, DEFAULT_STYLE.primaryColor)
-    .replace(/var\(--md-font-family\)/g, DEFAULT_STYLE.fontFamily)
-    .replace(/var\(--md-font-size\)/g, DEFAULT_STYLE.fontSize)
-    .replace(/var\(--blockquote-background\)/g, DEFAULT_STYLE.blockquoteBackground)
+    .replace(/var\(--md-primary-color\)/g, style.primaryColor)
+    .replace(/var\(--md-font-family\)/g, style.fontFamily)
+    .replace(/var\(--md-font-size\)/g, style.fontSize)
+    .replace(/var\(--blockquote-background\)/g, style.blockquoteBackground)
     .replace(/hsl\(var\(--foreground\)\)/g, "#3f3f3f")
     .replace(/--md-primary-color:\s*[^;"']+;?/g, "")
     .replace(/--md-font-family:\s*[^;"']+;?/g, "")
@@ -772,20 +986,20 @@ function normalizeCssText(cssText: string): string {
     .replace(/--foreground:\s*[^;"']+;?/g, "");
 }
 
-function normalizeInlineCss(html: string): string {
+function normalizeInlineCss(html: string, style: StyleConfig = DEFAULT_STYLE): string {
   let output = html;
   output = output.replace(
     /<style([^>]*)>([\s\S]*?)<\/style>/gi,
     (_match, attrs: string, cssText: string) =>
-      `<style${attrs}>${normalizeCssText(cssText)}</style>`
+      `<style${attrs}>${normalizeCssText(cssText, style)}</style>`
   );
   output = output.replace(
     /style="([^"]*)"/gi,
-    (_match, cssText: string) => `style="${normalizeCssText(cssText)}"`
+    (_match, cssText: string) => `style="${normalizeCssText(cssText, style)}"`
   );
   output = output.replace(
     /style='([^']*)'/gi,
-    (_match, cssText: string) => `style='${normalizeCssText(cssText)}'`
+    (_match, cssText: string) => `style='${normalizeCssText(cssText, style)}'`
   );
   return output;
 }
@@ -824,11 +1038,27 @@ async function main(): Promise<void> {
     options.inputPath.replace(/\.md$/i, ".html")
   );
 
+  const style: StyleConfig = {
+    ...DEFAULT_STYLE,
+    primaryColor: options.primaryColor,
+    fontFamily: options.fontFamily,
+    fontSize: options.fontSize,
+  };
+
   const { baseCss, themeCss } = loadThemeCss(options.theme);
-  const css = normalizeThemeCss(buildCss(baseCss, themeCss));
+  const css = normalizeThemeCss(buildCss(baseCss, themeCss, style));
+
+  const codeThemeCss = await fetchCodeThemeCss(options.codeTheme);
+
   const markdown = fs.readFileSync(inputPath, "utf-8");
 
-  const renderer = initRenderer({});
+  const renderer = initRenderer({
+    legend: options.legend,
+    citeStatus: options.citeStatus,
+    countStatus: options.countStatus,
+    isMacCodeBlock: options.isMacCodeBlock,
+    isShowLineNumber: options.isShowLineNumber,
+  });
   const { yamlData } = renderer.parseFrontMatterAndContent(markdown);
   const { html: baseHtml, readingTime: readingTimeResult } = renderMarkdown(
     markdown,
@@ -855,8 +1085,8 @@ async function main(): Promise<void> {
     author: stripQuotes(yamlData.author),
     description: stripQuotes(yamlData.description) || stripQuotes(yamlData.summary),
   };
-  const html = buildHtmlDocument(meta, css, content);
-  const inlinedHtml = normalizeInlineCss(await inlineCss(html));
+  const html = buildHtmlDocument(meta, css, content, codeThemeCss);
+  const inlinedHtml = normalizeInlineCss(await inlineCss(html), style);
   const finalHtml = modifyHtmlStructure(inlinedHtml);
 
   let backupPath = "";
