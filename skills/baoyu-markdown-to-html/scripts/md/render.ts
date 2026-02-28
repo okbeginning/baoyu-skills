@@ -109,14 +109,16 @@ const DEFAULT_STYLE: StyleConfig = {
 };
 
 const THEME_STYLE_DEFAULTS: Record<string, Partial<StyleConfig>> = {
-  heritage: {
-    primaryColor: COLOR_PRESETS.red,
-    accentColor: "#D4AC0D",
-    containerBg: "rgba(255, 251, 240, 1)",
-    fontFamily: FONT_FAMILY_MAP["serif-cjk"],
-    blockquoteBackground: "rgba(253, 237, 236, 1)",
+  default: {
+    primaryColor: COLOR_PRESETS.blue,
   },
-  warm: {
+  grace: {
+    primaryColor: COLOR_PRESETS.purple,
+  },
+  simple: {
+    primaryColor: COLOR_PRESETS.green,
+  },
+  modern: {
     primaryColor: COLOR_PRESETS.orange,
     accentColor: "#E4B1A0",
     containerBg: "rgba(250, 249, 245, 1)",
