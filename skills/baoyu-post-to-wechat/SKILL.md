@@ -48,7 +48,7 @@ test -f "$HOME/.baoyu-skills/baoyu-post-to-wechat/EXTEND.md" && echo "user"
 │ Not found │ Run first-time setup ([references/config/first-time-setup.md](references/config/first-time-setup.md)) → Save → Continue │
 └───────────┴───────────────────────────────────────────────────────────────────────────┘
 
-**EXTEND.md Supports**: Default theme | Default publishing method (api/browser) | Default author | Default open-comment switch | Default fans-only-comment switch | Chrome profile path
+**EXTEND.md Supports**: Default theme | Default color | Default publishing method (api/browser) | Default author | Default open-comment switch | Default fans-only-comment switch | Chrome profile path
 
 First-time setup: [references/config/first-time-setup.md](references/config/first-time-setup.md)
 
@@ -64,12 +64,17 @@ First-time setup: [references/config/first-time-setup.md](references/config/firs
 
 ```md
 default_theme: default
+default_color: blue
 default_publish_method: api
 default_author: 宝玉
 need_open_comment: 1
 only_fans_can_comment: 0
 chrome_profile_path: /path/to/chrome/profile
 ```
+
+**Theme options**: default, grace, simple, modern
+
+**Color presets**: blue, green, vermilion, yellow, purple, sky, rose, olive, black, gray, pink, red, orange (or hex value)
 
 **Value priority**:
 1. CLI arguments
@@ -134,6 +139,8 @@ Check and load EXTEND.md settings (see Preferences section above).
 **CRITICAL**: If not found, complete first-time setup BEFORE any other steps or questions.
 
 Resolve and store these defaults for later steps:
+- `default_theme` (default `default`)
+- `default_color` (omit if not set — theme default applies)
 - `default_author`
 - `need_open_comment` (default `1`)
 - `only_fans_can_comment` (default `0`)
@@ -201,13 +208,18 @@ B) Continue - provide HTML file manually
    - EXTEND.md `default_theme` (loaded in Step 0)
    - Fallback: `default`
 
-2. **Execute conversion** (using the discovered skill), **always pass `--theme`**:
+2. **Resolve color** (first match wins):
+   - CLI `--color` argument
+   - EXTEND.md `default_color` (loaded in Step 0)
+   - Omit if not set (theme default applies)
+
+3. **Execute conversion** (using the discovered skill), **always pass `--theme`**:
 
 ```bash
-npx -y bun ${MD_TO_HTML_SKILL_DIR}/scripts/main.ts <markdown_file> --theme <theme>
+npx -y bun ${MD_TO_HTML_SKILL_DIR}/scripts/main.ts <markdown_file> --theme <theme> [--color <color>]
 ```
 
-**CRITICAL**: Always include `--theme` parameter. Never omit it, even if using `default`.
+**CRITICAL**: Always include `--theme` parameter. Never omit it, even if using `default`. Only include `--color` if explicitly set by user or EXTEND.md.
 
 3. **Parse JSON output** to get: `htmlPath`, `title`, `author`, `summary`, `contentImages`
 
@@ -307,7 +319,7 @@ WeChat Publishing Complete!
 
 Input: [type] - [path]
 Method: API
-Theme: [theme name]
+Theme: [theme name] [color if set]
 
 Article:
 • Title: [title]
@@ -334,7 +346,7 @@ WeChat Publishing Complete!
 
 Input: [type] - [path]
 Method: Browser
-Theme: [theme name]
+Theme: [theme name] [color if set]
 
 Article:
 • Title: [title]
