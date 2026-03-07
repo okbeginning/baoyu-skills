@@ -2,6 +2,15 @@
 
 [English](./CHANGELOG.md) | 中文
 
+## 1.54.0 - 2026-03-06
+
+### 新功能
+- `baoyu-format-markdown`：优化标题和摘要生成，支持多风格候选（颠覆型、方案型、悬念型、数字型），新增禁用模式和钩子优先原则
+- `baoyu-markdown-to-html`：新增 `--cite` 选项，将普通外链转换为底部编号引用
+- `baoyu-post-to-wechat`：Markdown 输入默认启用底部引用，新增 `--no-cite` 标志可关闭
+- `baoyu-translate`：EXTEND.md 支持 `glossary_files` 加载外部术语表文件（Markdown 表格或 YAML 格式）
+- `baoyu-translate`：新增 frontmatter 转换规则，翻译时将源文章元数据字段添加 `source` 前缀
+
 ## 1.53.0 - 2026-03-06
 
 ### 新功能

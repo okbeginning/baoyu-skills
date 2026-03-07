@@ -2,6 +2,15 @@
 
 English | [中文](./CHANGELOG.zh.md)
 
+## 1.54.0 - 2026-03-06
+
+### Features
+- `baoyu-format-markdown`: improve title and summary generation with style-differentiated candidates, prohibited patterns, and hook-first principles
+- `baoyu-markdown-to-html`: add `--cite` option to convert ordinary external links to numbered bottom citations
+- `baoyu-post-to-wechat`: enable bottom citations by default for markdown input, add `--no-cite` flag to disable
+- `baoyu-translate`: support external glossary files via `glossary_files` in EXTEND.md (markdown table or YAML)
+- `baoyu-translate`: add frontmatter transformation rules to rename source metadata fields with `source` prefix
+
 ## 1.53.0 - 2026-03-06
 
 ### Features
